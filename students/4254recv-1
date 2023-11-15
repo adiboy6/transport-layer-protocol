@@ -43,41 +43,41 @@ log("[bound] " + str(UDP_PORT))
 
 # Now listen for packets
 while True:
-  result = sock.recvfrom(MSG_SIZE)
-  # If nothing is ready, we hit the timeout
-  if result:
-    (data, addr) = result
-    try:
-      decoded = data.decode("ascii")
-      decoded = json.loads(decoded)
-      # If the EOF flag is set, exit
-      if (decoded['eof']):
-        log("[completed]")
-        final_answer = ""
-        # Order the packets using sequence number.
-        for ii in sorted (data_dict):
-          final_answer += str(data_dict[ii])
-        # Print out the data in the packets as one large output.
-        sys.stdout.write(final_answer)
-        for i in range(11):
-	        sock.sendto("BYE", addr) 
-        sys.exit(0)
-      # If there is data, we accept it and print it out
-      if (decoded['data']):
-        # If we receive data, we assume it's in-order
-        # You will need to do much more here
-        data_dict[decoded['sequence']] = decoded['data']
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
-
-      # Send back an ack to the sender
-      msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])}, ensure_ascii=False)
-      log("ABOUT TO SEND " + msg)
-      if sock.sendto(msg, addr) < len(msg):
-        log("[error] unable to fully send packet")
-
-    except (ValueError, KeyError, TypeError) as e:
-      log("[recv corrupt packet]")
-      raise e
-  else:
-    log("[error] timeout")
+  try:
+    result = sock.recvfrom(MSG_SIZE)
+    if result:
+      (data, addr) = result
+      try:
+        decoded = data.decode("ascii")
+        decoded = json.loads(decoded)
+        if decoded['eof']:
+          log("[completed]")
+          final_answer = ""
+          for ii in sorted(data_dict):
+            final_answer += str(data_dict[ii])
+          sys.stdout.write(final_answer)
+          for i in range(11):
+            try:
+              sock.sendto("BYE", addr)
+            except socket.error as e:
+              log("[error] Socket error during sendto: {}".format(e))
+          sys.exit(0)
+        if decoded['data']:
+          data_dict[decoded['sequence']] = decoded['data']
+          log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
+        msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])}, ensure_ascii=False)
+        log("ABOUT TO SEND " + msg)
+        try:
+          if sock.sendto(msg, addr) < len(msg):
+            log("[error] unable to fully send packet")
+        except socket.error as e:
+          log("[error] Socket error during sendto: {}".format(e))
+      except (ValueError, KeyError, TypeError) as e:
+        log("[recv corrupt packet]")
+        raise e
+    else:
+      log("[error] timeout")
+      sys.exit(-1)
+  except socket.error as e:
+    log("[error] Socket error during recvfrom: {}".format(e))
     sys.exit(-1)

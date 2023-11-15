@@ -48,19 +48,21 @@ def send_next_packet(packets_sent):
   global SEQUENCE
 
   data = sys.stdin.read(DATA_SIZE)
-  if (len(data) > 0):
+  if len(data) > 0:
     msg_as_json = {"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}
-    #print(sys.getsizeof({"sequence": SEQUENCE, "data": None, "ack": False, "eof": False}))
-    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}, ensure_ascii=False)
+    msg = json.dumps(msg_as_json, ensure_ascii=False)
     msg = msg.encode("ascii")
     SEQUENCE += len(data)
-    if sock.sendto(msg, dest) < len(msg):
-      log("[error] unable to fully send packet")
-    else:
-      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
-      # We want to keep track of all the packets we sent so we can index them if their respective ack wasnt receieved.
-      packets_sent[SEQUENCE] = msg_as_json
-    return True
+    try:
+        if sock.sendto(msg, dest) < len(msg):
+            log("[error] unable to fully send packet")
+        else:
+            log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+            packets_sent[SEQUENCE] = msg_as_json
+        return True
+    except socket.error as e:
+        log("[error] Socket error during send_next_packet: {}".format(e))
+        return False
   else:
     return False
 
@@ -107,24 +109,30 @@ for key in packets_sent:
 # While we still have sequnce numbers that we haven't received an ack for try to send.
 while len(no_acks_back) > 0:
   for ii in no_acks_back:
-    if sock.sendto(json.dumps(packets_sent[ii], ensure_ascii=False), dest) < len(json.dumps(packets_sent[ii], ensure_ascii=False)):
-      log("[error] unable to fully send packet")
-    else:
-      log("[send data] " + str(ii) + " (" + str(len(packets_sent[ii]["data"])) + ")")
-      # Redo the select.select and if successful, remove from noackback
-      log("ABOUT TO SLEEP")
-      result = ""
-      ready = select.select([sock], [], [], .2)
-      if ready[0]:
-        result = sock.recvfrom(MSG_SIZE)
-        (data, addr) = result
+    try:
+      if sock.sendto(json.dumps(packets_sent[ii], ensure_ascii=False), dest) < len(json.dumps(packets_sent[ii], ensure_ascii=False)):
+        log("[error] unable to fully send packet")
+      else:
+        log("[send data] " + str(ii) + " (" + str(len(packets_sent[ii]["data"])) + ")")
+        # Redo the select.select and if successful, remove from noackback
+        log("ABOUT TO SLEEP")
+        result = ""
         try:
-          decoded = json.loads(data)
-          if decoded['ack'] == ii:
-            log("[recv ack] " + str(ii))
-            del no_acks_back[no_acks_back.index(ii)]
-        except (ValueError, KeyError, TypeError):
-          log("[recv corrupt packet]")
+          ready = select.select([sock], [], [], .2)
+          if ready[0]:
+            result = sock.recvfrom(MSG_SIZE)
+            (data, addr) = result
+            try:
+              decoded = json.loads(data)
+              if decoded['ack'] == ii:
+                log("[recv ack] " + str(ii))
+                del no_acks_back[no_acks_back.index(ii)]
+            except (ValueError, KeyError, TypeError):
+              log("[recv corrupt packet]")
+        except socket.error as e:
+          log("[error] Socket error during select: {}".format(e))
+    except socket.error as e:
+      log("[error] Socket error during select: {}".format(e))
 
 # Make sure they get the eof.
 done = False
