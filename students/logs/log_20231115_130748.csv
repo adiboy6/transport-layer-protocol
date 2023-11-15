@@ -1,0 +1,3 @@
+Port,Timestamp,tput in bits per sec,bytes in last sec,packets in last sec,total bytes,total packets
+25417,1700053669.8997722,34648,4331,4,4331,4
+25417,1700053670.9544358,50608,6326,7,10657,11
