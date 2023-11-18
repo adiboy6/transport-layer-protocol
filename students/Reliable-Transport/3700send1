@@ -11,20 +11,12 @@ MSG_SIZE = 1500
 DATA_SIZE = 500
 TIMEOUT = 0.1
 
-# Message Fields
-SEQ_NO = "sequence"
-ACK = "ack"
-SACK = "sack"
-DATA = "data"
-EOF = "eof"
-
 # Packet Fields
 MSG = "packet mesage"
 PST = "packet send time"
 PTO = "packet timeout"
 PRT = "packet retransmissions"
 
-ALPHA = 0.875
 WINDOW = 15
 
 def log(string):
@@ -39,20 +31,21 @@ class Sender():
     self.sock.settimeout(TIMEOUT)  
 
     self.sequence_number = 0
+    
     self.rtt = 0.1
-    self.sent_packets = dict()
+    self.packets_sent = {}
     self.data_transmission_complete = False
     self.last_packet_receive_time = None
 
   def send_packet(self, msg):
-    """Send a packet and update sent_packets dictionary."""
+    """Send a packet and update packets_sent dictionary."""
     if self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode("ascii"), self.destination) < len(msg):
       log("[error] unable to fully send packet")
     else:
-      log(f"[send data] {msg[SEQ_NO]} ({len(msg[DATA])})")
+      log(f"[send data] {msg['sequence']} ({len(msg['data'])})")
       packet_send_time = time.time()
       packet_timeout = packet_send_time + (2 * self.rtt)
-      self.sent_packets[msg[SEQ_NO]] = {
+      self.packets_sent[msg['sequence']] = {
         MSG: msg,
         PST: packet_send_time,
         PTO: packet_timeout,
@@ -61,34 +54,34 @@ class Sender():
 
   def send_next_packet(self):
     """Load and send next packet."""
-    msg = {SEQ_NO: self.sequence_number, DATA: "", ACK: False, EOF: False}
+    msg = {'sequence': self.sequence_number, 'data': "", 'ack': False, 'eof': False}
     data = sys.stdin.read(DATA_SIZE)
-    msg[DATA] = data
+    msg['data'] = data
 
     if self.data_transmission_complete:
       return
 
-    if len(msg[DATA]) > 0:
+    if len(msg['data']) > 0:
       assert (len(msg) <= DATA_SIZE), f"ERROR: Datagram is longer ({len(msg)}) than {DATA_SIZE} bytes."
       self.send_packet(msg)
-      self.sequence_number += len(msg[DATA])
+      self.sequence_number += len(msg['data'])
     else:
-      # Send EOF packet.
-      eof_msg = {EOF: True, DATA: "", SEQ_NO: self.sequence_number, ACK: False}
+      # Send 'eof' packet.
+      eof_msg = {'eof': True, 'data': "", 'sequence': self.sequence_number, 'ack': False}
       self.send_packet(eof_msg)
       self.data_transmission_complete = True
 
   def retransmit_packet(self, sequence_number):
     """Retransmit the packet with the given sequence number."""
-    packet = self.sent_packets[sequence_number]
+    packet = self.packets_sent[sequence_number]
     msg = packet[MSG]
 
     def update_packet_info():
-      """Update packet information in the sent_packets dictionary."""
+      """Update packet information in the packets_sent dictionary."""
       packet_send_time = time.time()
       packet_retransmissions = packet[PRT] + 1
       packet_timeout = packet_send_time + 2 * self.rtt * packet_retransmissions
-      self.sent_packets[sequence_number] = {
+      self.packets_sent[sequence_number] = {
         MSG: msg,
         PST: packet_send_time,
         PTO: packet_timeout,
@@ -98,15 +91,15 @@ class Sender():
     if self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode("ascii"), self.destination) < len(msg):
       log("[error] unable to fully send packet")
     else:
-      log(f"[send data] {sequence_number} ({len(msg[DATA])})")
+      log(f"[send data] {sequence_number} ({len(msg['data'])})")
       update_packet_info()
 
-  def run(self):
+  def start(self):
     """Main loop of the sender."""
     def send_initial_packets():
       """Send initial packets up to the advertised window size."""
       self.last_packet_receive_time = time.time()
-      while len(self.sent_packets) < WINDOW and not self.data_transmission_complete:
+      while len(self.packets_sent) < WINDOW and not self.data_transmission_complete:
         self.send_next_packet()
 
     def handle_received_data(result):
@@ -117,44 +110,44 @@ class Sender():
       
       try:
         decoded = json.loads(data)
-        log(f"[recv ack] {decoded[ACK]}")
+        log(f"[recv ack] {decoded['ack']}")
         handle_ack(decoded)
       except (ValueError, KeyError, TypeError):
         log("[recv corrupt packet]")
 
     def handle_ack(decoded):
       """Handle an acknowledgment from the receiver."""
-      if decoded[SACK] in self.sent_packets:
+      if decoded['sack'] in self.packets_sent:
         update_rtt(decoded)
-        del self.sent_packets[decoded[SACK]]
+        del self.packets_sent[decoded['sack']]
 
       remove_received_packets(decoded)
       send_new_packets()
 
-      if len(self.sent_packets) == 0 and self.data_transmission_complete:
+      if len(self.packets_sent) == 0 and self.data_transmission_complete:
         log("[completed]")
         sys.exit(0)
 
     def update_rtt(decoded):
       """Update the RTT based on the received acknowledgment."""
-      sent_packet = self.sent_packets[decoded[SACK]]
+      sent_packet = self.packets_sent[decoded['sack']]
       if sent_packet[PRT] == 0:
         packet_send_time = sent_packet[PST]
         old_rtt = self.rtt
         new_sample = time.time() - packet_send_time
-        new_rtt = ALPHA * old_rtt + (1.0 - ALPHA) * new_sample
+        new_rtt = .875 * old_rtt + (1.0 - .875) * new_sample
         self.rtt = new_rtt
 
     def remove_received_packets(decoded):
       """Remove packets that have been received by the receiver."""
-      unackownledged_sequence_numbers = list(self.sent_packets.keys())
+      unackownledged_sequence_numbers = list(self.packets_sent.keys())
       for sequence_number in unackownledged_sequence_numbers:
-        if sequence_number < decoded[ACK]:
-          del(self.sent_packets[sequence_number])
+        if sequence_number < decoded['ack']:
+          del(self.packets_sent[sequence_number])
 
     def send_new_packets():
       """Send new packets up to the advertised window size."""
-      while len(self.sent_packets) < WINDOW and not self.data_transmission_complete:
+      while len(self.packets_sent) < WINDOW and not self.data_transmission_complete:
         self.send_next_packet()
 
     def resend_packets():
@@ -164,8 +157,8 @@ class Sender():
         log("[error] timeout")
         sys.exit(-1)
       else:
-        for sequence_number in self.sent_packets:
-          sent_packet = self.sent_packets[sequence_number]
+        for sequence_number in self.packets_sent:
+          sent_packet = self.packets_sent[sequence_number]
           if (current_time > sent_packet[PTO]):
             self.retransmit_packet(sequence_number)
 
@@ -201,4 +194,4 @@ else:
   sys.exit(-1)
 
 sender = Sender(UDP_IP, UDP_PORT)
-sender.run()
+sender.start()
