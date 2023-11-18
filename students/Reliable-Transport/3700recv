@@ -11,9 +11,9 @@ TIMEOUT = 30
 
 # Message Fields
 SEQ_NO = "sequence"
-DATA = "data"
 ACK = "ack"
 SACK = "sack"
+DATA = "data"
 EOF = "eof"
 
 FIN = 5
@@ -36,16 +36,12 @@ elif (len(sys.argv) == 1):
 else:
   sys.exit(0)
 
-# receiver = Receiver(udp_ip, udp_port)
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.settimeout(TIMEOUT)
 
 read_data = 0
 received_packets = []
-
-#receiver.run()
 
 while True:
   result = sock.recvfrom(MSG_SIZE)
