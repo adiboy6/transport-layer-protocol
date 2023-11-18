@@ -1,6 +1,1 @@
-students/win_x86/.vagrant/machines/default/virtualbox/action_provision
-students/win_x86/.vagrant/machines/default/virtualbox/action_set_name
-students/win_x86/.vagrant/machines/default/virtualbox/box_meta
-students/win_x86/.vagrant/machines/default/virtualbox/id
-students/win_x86/.vagrant/machines/default/virtualbox/index_uuid
-students/win_x86/.vagrant/machines/default/virtualbox/private_key
+students/win_x86/*
