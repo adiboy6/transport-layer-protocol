@@ -1,81 +1,194 @@
 #!/usr/bin/python3 -u
 #
 
-
 import sys
 import socket
-import time
 import datetime
-import select
 import json
-
-from base64 import b64encode
+import time
 
 MSG_SIZE = 1500
-DATA_SIZE = 1000
-TIMEOUT = 30
-SEQUENCE = 0
+DATA_SIZE = 500
+TIMEOUT = 0.1
 
-# Bind to localhost and an ephemeral port
-IP_PORT = sys.argv[1]
-UDP_IP = IP_PORT[0:IP_PORT.find(":")]
-UDP_PORT = int(IP_PORT[IP_PORT.find(":")+1:])
-dest = (UDP_IP, UDP_PORT)
-file_contents = ""
+# Packet Fields
+MSG = "packet mesage"
+PST = "packet send time"
+PTO = "packet timeout"
+PRT = "packet retransmissions"
 
-
-time.sleep(0.5)
-
-# Set up the socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-sock.settimeout(TIMEOUT)
+WINDOW = 15
 
 def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " 4254send: " + string + "\n")
+  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
-def send_next_packet():
-  # print("inside this")
-  global SEQUENCE
-  global file_contents
+class Sender():
+  def __init__(self, udp_ip, udp_port):
+    self.destination = (udp_ip, udp_port)
+
+    # Set up the socket.
+    self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    self.sock.settimeout(TIMEOUT)  
+
+    self.sequence_number = 0
+    
+    self.rtt = 0.1
+    self.packets_sent = {}
+    self.data_transmission_complete = False
+    self.last_packet_receive_time = None
+
+  def send_packet(self, msg):
+    """Send a packet and update packets_sent dictionary."""
+    if self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode("ascii"), self.destination) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log(f"[send data] {msg['sequence']} ({len(msg['data'])})")
+      packet_send_time = time.time()
+      packet_timeout = packet_send_time + (2 * self.rtt)
+      self.packets_sent[msg['sequence']] = {
+        MSG: msg,
+        PST: packet_send_time,
+        PTO: packet_timeout,
+        PRT: 0
+      }
+
+  def send_next_packet(self):
+    """Load and send next packet."""
+    msg = {'sequence': self.sequence_number, 'data': "", 'ack': False, 'eof': False}
+    data = sys.stdin.read(DATA_SIZE)
+    msg['data'] = data
+
+    if self.data_transmission_complete:
+      return
+
+    if len(msg['data']) > 0:
+      assert (len(msg) <= DATA_SIZE), f"ERROR: Datagram is longer ({len(msg)}) than {DATA_SIZE} bytes."
+      self.send_packet(msg)
+      self.sequence_number += len(msg['data'])
+    else:
+      # Send 'eof' packet.
+      eof_msg = {'eof': True, 'data': "", 'sequence': self.sequence_number, 'ack': False}
+      self.send_packet(eof_msg)
+      self.data_transmission_complete = True
+
+  def retransmit_packet(self, sequence_number):
+    """Retransmit the packet with the given sequence number."""
+    packet = self.packets_sent[sequence_number]
+    msg = packet[MSG]
+
+    def update_packet_info():
+      """Update packet information in the packets_sent dictionary."""
+      packet_send_time = time.time()
+      packet_retransmissions = packet[PRT] + 1
+      packet_timeout = packet_send_time + 2 * self.rtt * packet_retransmissions
+      self.packets_sent[sequence_number] = {
+        MSG: msg,
+        PST: packet_send_time,
+        PTO: packet_timeout,
+        PRT: packet_retransmissions
+      }
+
+    if self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode("ascii"), self.destination) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log(f"[send data] {sequence_number} ({len(msg['data'])})")
+      update_packet_info()
+
+  def start(self):
+    """Main loop of the sender."""
+    def send_initial_packets():
+      """Send initial packets up to the advertised window size."""
+      self.last_packet_receive_time = time.time()
+      while len(self.packets_sent) < WINDOW and not self.data_transmission_complete:
+        self.send_next_packet()
+
+    def handle_received_data(result):
+      """Handle received data from the receiver."""
+      self.last_packet_receive_time = time.time()
+      (data, _address) = result
+      data = data.decode("ascii")
+      
+      try:
+        decoded = json.loads(data)
+        log(f"[recv ack] {decoded['ack']}")
+        handle_ack(decoded)
+      except (ValueError, KeyError, TypeError):
+        log("[recv corrupt packet]")
+
+    def handle_ack(decoded):
+      """Handle an acknowledgment from the receiver."""
+      if decoded['sack'] in self.packets_sent:
+        update_rtt(decoded)
+        del self.packets_sent[decoded['sack']]
+
+      remove_received_packets(decoded)
+      send_new_packets()
+
+      if len(self.packets_sent) == 0 and self.data_transmission_complete:
+        log("[completed]")
+        sys.exit(0)
+
+    def update_rtt(decoded):
+      """Update the RTT based on the received acknowledgment."""
+      sent_packet = self.packets_sent[decoded['sack']]
+      if sent_packet[PRT] == 0:
+        new_sample = time.time() - sent_packet[PST]
+        self.rtt = .875 * self.rtt + (1.0 - .875) * new_sample
+
+    def remove_received_packets(decoded):
+      """Remove packets that have been received by the receiver."""
+      unack_seq_num = list(self.packets_sent.keys())
+      for seq_num in unack_seq_num:
+        if seq_num < decoded['ack']:
+          del(self.packets_sent[seq_num])
+
+    def send_new_packets():
+      """Send new packets up to the advertised window size."""
+      while len(self.packets_sent) < WINDOW and not self.data_transmission_complete:
+        self.send_next_packet()
+
+    def resend_packets():
+      """Resend packets if needed."""
+      current_time = time.time()
+      if ((current_time - self.last_packet_receive_time) > (TIMEOUT * 1000)):
+        log("[error] timeout")
+        sys.exit(-1)
+      else:
+        for sequence_number in self.packets_sent:
+          sent_packet = self.packets_sent[sequence_number]
+          if (current_time > sent_packet[PTO]):
+            self.retransmit_packet(sequence_number)
+
+    # Main loop.
+    send_initial_packets()
+    while True:
+      try:
+        result = self.sock.recvfrom(MSG_SIZE)
+      except socket.timeout:
+        result = None
+      if result:
+        handle_received_data(result)
+      resend_packets()
+
+# Ensure that there is exactly one argument.
+if not(len(sys.argv) == 2):
+  sys.exit("Usage: ./3700send [ip.add.re.ss]:[port]")
+# Bind to localhost and an ephemeral port.
+IP_PORT = sys.argv[1]
+# If there is an ip:port pairing, separate, otherwise exit.
+if (":" in IP_PORT):
+  # Get IP.
+  UDP_IP = IP_PORT[0:IP_PORT.find(":")]
+  # Get integer value port.
   try:
-    for line in sys.stdin:
-        file_contents = file_contents + line
-  except EOFError:
-      print("End of file reached.")
+    UDP_PORT = int(IP_PORT[IP_PORT.find(":")+1:])
+  # If port given is not an integer exit with message.
+  except:
+    sys.exit("Specified port must be an integer.")
+  # Create a destination ip:port tuple -> (ip, port)
+  dest = (UDP_IP, UDP_PORT)
+else:
+  sys.exit(-1)
 
-  msg = json.dumps({"sequence": SEQUENCE, "data": b64encode(file_contents).decode(), "ack": False, "eof": False})
-  if sock.sendto(msg.encode(), dest) < len(msg):
-    log("[error] unable to fully send packet")
-  else:
-    log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
-  SEQUENCE+=len(data)
-  return True
-
-# Send first packet
-send_next_packet()
-
-# Now read in data, send packets
-while True:
-  log("ABOUT TO SLEEP")
-  result = sock.recvfrom(MSG_SIZE)
-
-  if result:
-    (data, addr) = result
-    try:
-      decoded = json.loads(data.decode())
-      log("[recv pkt] " + str(decoded))
-      log("[recv ack] " + str(decoded['ack']))
-
-      # If there is an ack, send next packet
-      if decoded['ack'] == SEQUENCE:
-        # Try to send next packet; break if no more data
-        if (not send_next_packet()):
-          break
-    except (ValueError, KeyError, TypeError):
-      log("[recv corrupt packet]")
-  else:
-    log("[error] timeout")
-    sys.exit(-1)
-
-sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}).encode(), dest)
-sys.exit(0)
+sender = Sender(UDP_IP, UDP_PORT)
+sender.start()
