@@ -10,7 +10,7 @@ ENCODING = "ascii"
 
 MSG_SIZE = 1500
 DATA_SIZE = 500
-TIMEOUT = 0.099
+TIMEOUT = 0.1
 
 ##########################################################################
 
@@ -30,7 +30,7 @@ PRT = "packet retransmissions"
 ##########################################################################
 
 ALPHA = 0.875
-ADVERTISED_WINDOW = 15
+WINDOW = 15
 INITIAL_RTT = 0.1
 
 def log(string):
@@ -117,7 +117,7 @@ class Sender():
   def run(self):
     # Send initial packets.
     self.last_packet_receive_time = time.time()
-    while len(self.sent_packets) < ADVERTISED_WINDOW and not self.data_transmission_complete:
+    while len(self.sent_packets) < WINDOW and not self.data_transmission_complete:
       self.send_next_packet()
 
     # Now read in data and send packets.
@@ -156,7 +156,7 @@ class Sender():
                 del(self.sent_packets[sequence_number])
           
           # Send next packets.
-          while len(self.sent_packets) < ADVERTISED_WINDOW and not self.data_transmission_complete:
+          while len(self.sent_packets) < WINDOW and not self.data_transmission_complete:
             self.send_next_packet()
 
           # Complete if no packets in flight and data transmission complete.
