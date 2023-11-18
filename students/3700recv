@@ -41,14 +41,6 @@ class Receiver:
     self.read_data = 0
     self.received_packets = []
 
-  def process_received_packets(self):
-    sorted_packets = sorted(self.received_packets, key=lambda packet: packet[SEQN])
-    for packet in sorted_packets:
-      if packet[SEQN] == self.read_data:
-        sys.stdout.write(packet[DATA])
-        self.read_data = packet[SEQN] + len(packet[DATA])
-    self.received_packets = list(filter(lambda packet: packet[SEQN] > self.read_data, sorted_packets))
-
   def run(self):
     # Listen for packets.
     while True:
@@ -58,7 +50,6 @@ class Receiver:
       if result:
         (data, address) = result
         data = data.decode(ENCODING)
-        # print(data)
         try:
           decoded = json.loads(data)
 
@@ -87,7 +78,14 @@ class Receiver:
               else:
                 log("IGNORED")
 
-            self.process_received_packets()
+            # self.process_received_packets()
+            
+            sorted_packets = sorted(self.received_packets, key=lambda packet: packet[SEQN])
+            for packet in sorted_packets:
+              if packet[SEQN] == self.read_data:
+                sys.stdout.write(packet[DATA])
+                self.read_data = packet[SEQN] + len(packet[DATA])
+            self.received_packets = list(filter(lambda packet: packet[SEQN] > self.read_data, sorted_packets))
 
             # Send back an ACK to the sender.
             msg = json.dumps({ACK: self.read_data, SACK: decoded[SEQN]})
