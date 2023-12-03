@@ -5,6 +5,7 @@ import sys
 import socket
 import datetime
 import json
+import base64
 
 MSG_SIZE = 1500
 TIMEOUT = 30
@@ -61,7 +62,7 @@ while True:
         if decoded['data']:
           seq_num = decoded['sequence']
           buffered_seq_num = list(map(lambda packet: packet['sequence'], recv_packets))
-          if seq_num >= read_data and not seq_num in buffered_seq_num:
+          if seq_num >= read_data and seq_num not in buffered_seq_num:
             if seq_num == read_data:
               log(f"[recv data] {seq_num} ({len(decoded['data'])}) ACCEPTED (in-order)")
             else:
@@ -73,7 +74,7 @@ while True:
         sorted_packets = sorted(recv_packets, key=lambda packet: packet['sequence'])
         for packet in sorted_packets:
           if packet['sequence'] == read_data:
-            sys.stdout.write(packet['data'])
+            sys.stdout.buffer.write(base64.b64decode(packet['data']))
             read_data = packet['sequence'] + len(packet['data'])
         recv_packets = list(filter(lambda packet: packet['sequence'] > read_data, sorted_packets))
 

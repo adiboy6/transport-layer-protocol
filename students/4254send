@@ -6,6 +6,7 @@ import socket
 import datetime
 import json
 import time
+import base64
 
 MSG_SIZE = 1500
 DATA_SIZE = 500
@@ -33,9 +34,9 @@ class Sender():
     self.sequence_number = 0
     
     self.rtt = 0.1
+    self.fin_packet_recv_time = None
+    self.transmission_completion = False
     self.packets_sent = {}
-    self.data_transmission_complete = False
-    self.last_packet_receive_time = None
 
   def send_packet(self, msg):
     """Send a packet and update packets_sent dictionary."""
@@ -55,10 +56,10 @@ class Sender():
   def send_next_packet(self):
     """Load and send next packet."""
     msg = {'sequence': self.sequence_number, 'data': "", 'ack': False, 'eof': False}
-    data = sys.stdin.read(DATA_SIZE)
+    data = base64.b64encode(sys.stdin.buffer.read(DATA_SIZE)).decode('utf-8')
     msg['data'] = data
 
-    if self.data_transmission_complete:
+    if self.transmission_completion:
       return
 
     if len(msg['data']) > 0:
@@ -67,9 +68,9 @@ class Sender():
       self.sequence_number += len(msg['data'])
     else:
       # Send 'eof' packet.
-      eof_msg = {'eof': True, 'data': "", 'sequence': self.sequence_number, 'ack': False}
-      self.send_packet(eof_msg)
-      self.data_transmission_complete = True
+      msg_eof = {'sequence': self.sequence_number, 'data': "", 'eof': True, 'ack': False}
+      self.send_packet(msg_eof)
+      self.transmission_completion = True
 
   def retransmit_packet(self, sequence_number):
     """Retransmit the packet with the given sequence number."""
@@ -98,13 +99,13 @@ class Sender():
     """Main loop of the sender."""
     def send_initial_packets():
       """Send initial packets up to the advertised window size."""
-      self.last_packet_receive_time = time.time()
-      while len(self.packets_sent) < WINDOW and not self.data_transmission_complete:
+      self.fin_packet_recv_time = time.time()
+      while len(self.packets_sent) < WINDOW and not self.transmission_completion:
         self.send_next_packet()
 
     def handle_received_data(result):
       """Handle received data from the receiver."""
-      self.last_packet_receive_time = time.time()
+      self.fin_packet_recv_time = time.time()
       (data, _address) = result
       data = data.decode("ascii")
       
@@ -124,7 +125,7 @@ class Sender():
       remove_received_packets(decoded)
       send_new_packets()
 
-      if len(self.packets_sent) == 0 and self.data_transmission_complete:
+      if len(self.packets_sent) == 0 and self.transmission_completion:
         log("[completed]")
         sys.exit(0)
 
@@ -144,13 +145,13 @@ class Sender():
 
     def send_new_packets():
       """Send new packets up to the advertised window size."""
-      while len(self.packets_sent) < WINDOW and not self.data_transmission_complete:
+      while len(self.packets_sent) < WINDOW and not self.transmission_completion:
         self.send_next_packet()
 
     def resend_packets():
       """Resend packets if needed."""
       current_time = time.time()
-      if ((current_time - self.last_packet_receive_time) > (TIMEOUT * 1000)):
+      if ((current_time - self.fin_packet_recv_time) > (TIMEOUT * 1000)):
         log("[error] timeout")
         sys.exit(-1)
       else:
@@ -172,7 +173,7 @@ class Sender():
 
 # Ensure that there is exactly one argument.
 if not(len(sys.argv) == 2):
-  sys.exit("Usage: ./3700send [ip.add.re.ss]:[port]")
+  sys.exit(-1)
 # Bind to localhost and an ephemeral port.
 IP_PORT = sys.argv[1]
 # If there is an ip:port pairing, separate, otherwise exit.

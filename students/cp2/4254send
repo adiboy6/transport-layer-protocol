@@ -6,6 +6,7 @@ import socket
 import datetime
 import json
 import time
+import base64
 
 MSG_SIZE = 1500
 DATA_SIZE = 500
@@ -55,7 +56,7 @@ class Sender():
   def send_next_packet(self):
     """Load and send next packet."""
     msg = {'sequence': self.sequence_number, 'data': "", 'ack': False, 'eof': False}
-    data = sys.stdin.read(DATA_SIZE)
+    data = base64.b64encode(sys.stdin.buffer.read(DATA_SIZE)).decode('utf-8')
     msg['data'] = data
 
     if self.transmission_completion:
