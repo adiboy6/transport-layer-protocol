@@ -17,8 +17,18 @@ from fcntl import fcntl, F_GETFL, F_SETFL
 from threading import Thread
 from time import sleep, strftime, time
 
-SEND = "./4254send-1"
-RECV = "./4254recv-1"
+SEND = "./4254send"
+RECV = "./4254recv"
+
+# SEND = "./cp2/4254send"
+# RECV = "./cp2/4254recv"
+
+# SEND = "./4254send-cwnd"
+# RECV = "./4254recv-cwnd"
+
+# SEND = "./Reliable-Transport/3700send1"
+# RECV = "./Reliable-Transport/3700recv"
+
 TC_RE = re.compile("Sent (?P<bytes>[0-9]*) bytes (?P<pkts>[0-9]*) pkt")
 FNAME_POOL = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 PAGE_SIZE = 4096
@@ -156,6 +166,7 @@ if __name__ == "__main__":
   finally:
     for fname in [fdatain_name, fdataout_name]:
       if os.path.exists(fname):
-        os.remove(fname)
+        # os.remove(fname)
+        pass
 
 

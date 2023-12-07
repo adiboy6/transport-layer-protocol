@@ -3,8 +3,8 @@
 #my $SEND = "4254send";
 #my $RECV = "4254recv";
 
-my $SEND = "4254send-1";
-my $RECV = "4254recv-1";
+my $SEND = "4254send";
+my $RECV = "4254recv";
 my $NETSIM = "/usr/local/bin/netsim";
 my $RUN = "/usr/local/bin/nettest";
 
