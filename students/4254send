@@ -7,6 +7,9 @@ import datetime
 import json
 import time
 import base64
+import logging
+
+logging.basicConfig(filename='log-'+datetime.datetime.now().strftime("%y%m%d%H%M%S")+'.txt', level=logging.INFO)
 
 MSG_SIZE = 1500
 DATA_SIZE = 1000
@@ -49,6 +52,7 @@ class Sender():
       log("[error] unable to fully send packet")
     else:
       log(f"[send data] {msg['sequence']} ({len(msg['data'])})")
+      logging.info(f"[send data] current_time={time.time()} {self.cwnd}")
       packet_send_time = time.time()
       packet_timeout = packet_send_time + (2 * self.rtt)
       self.packets_sent[msg['sequence']] = {
@@ -148,6 +152,8 @@ class Sender():
           self.reno_phase = 'congestion_avoidance'
           self.cwnd = self.ssthresh
       
+      logging.info(f"[recv ack] {decoded['ack']} cwnd={self.cwnd}")
+      
       remove_received_packets(decoded)
       send_new_packets()
 
@@ -161,6 +167,7 @@ class Sender():
       if sent_packet[PRT] == 0:
         new_sample = time.time() - sent_packet[PST]
         self.rtt = .875 * self.rtt + (1.0 - .875) * new_sample
+        logging.info(f"[update rtt] {decoded['sack']} rtt={self.rtt}")
 
     def remove_received_packets(decoded):
       """Remove packets that have been received by the receiver."""

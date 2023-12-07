@@ -62,7 +62,7 @@ while True:
         if decoded['data']:
           seq_num = decoded['sequence']
           buffered_seq_num = list(map(lambda packet: packet['sequence'], recv_packets))
-          if seq_num >= read_data and seq_num not in buffered_seq_num:
+          if seq_num >= read_data and not seq_num in buffered_seq_num:
             if seq_num == read_data:
               log(f"[recv data] {seq_num} ({len(decoded['data'])}) ACCEPTED (in-order)")
             else:
