@@ -144,7 +144,10 @@ class Sender():
           self.retransmit_packet(decoded['ack'])
       else:
         self.duplicate_acks = 0
-
+        if self.reno_phase == 'fast_recovery':
+          self.reno_phase = 'congestion_avoidance'
+          self.cwnd = self.ssthresh
+      
       remove_received_packets(decoded)
       send_new_packets()
 
