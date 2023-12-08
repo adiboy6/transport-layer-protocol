@@ -9,7 +9,7 @@ import time
 import base64
 
 MSG_SIZE = 1500
-DATA_SIZE = 500
+DATA_SIZE = 1000
 TIMEOUT = 0.1
 
 # Packet Fields
@@ -37,6 +37,11 @@ class Sender():
     self.fin_packet_recv_time = None
     self.transmission_completion = False
     self.packets_sent = {}
+    
+    self.cwnd = 1  # Congestion window
+    self.ssthresh = WINDOW  # Slow start threshold
+    self.duplicate_acks = 0  # Count of duplicate ACKs
+    self.reno_phase = 'slow_start'  # Start with slow start phase
 
   def send_packet(self, msg):
     """Send a packet and update packets_sent dictionary."""
@@ -72,10 +77,21 @@ class Sender():
       self.send_packet(msg_eof)
       self.transmission_completion = True
 
+    # Update congestion window
+    if self.reno_phase == 'slow_start':
+      self.cwnd += 1
+    elif self.reno_phase == 'congestion_avoidance':
+      self.cwnd += 1 / self.cwnd
+
   def retransmit_packet(self, sequence_number):
     """Retransmit the packet with the given sequence number."""
     packet = self.packets_sent[sequence_number]
     msg = packet[MSG]
+    
+    # Update congestion window and slow start threshold
+    self.ssthresh = max(len(self.packets_sent) / 2, 2)
+    self.cwnd = self.ssthresh + 3
+    self.reno_phase = 'fast_recovery'
 
     def update_packet_info():
       """Update packet information in the packets_sent dictionary."""
@@ -122,6 +138,15 @@ class Sender():
         update_rtt(decoded)
         del self.packets_sent[decoded['sack']]
 
+      if decoded['ack'] == self.sequence_number:
+        self.duplicate_acks += 1
+        if self.duplicate_acks == 3:
+          self.retransmit_packet(decoded['ack'])
+      else:
+        self.duplicate_acks = 0
+        if self.reno_phase == 'fast_recovery':
+          self.reno_phase = 'congestion_avoidance'
+          self.cwnd = self.ssthresh
       remove_received_packets(decoded)
       send_new_packets()
 
@@ -145,7 +170,7 @@ class Sender():
 
     def send_new_packets():
       """Send new packets up to the advertised window size."""
-      while len(self.packets_sent) < WINDOW and not self.transmission_completion:
+      while len(self.packets_sent) < min(self.cwnd, WINDOW) and not self.transmission_completion:
         self.send_next_packet()
 
     def resend_packets():
