@@ -2,10 +2,10 @@ import os
 import matplotlib.pyplot as plt
 
 # Parse the log file
-times = []
-cwnd_sizes = []
-throughputs = []
 for filename in os.listdir(os.getcwd()):
+    times = []
+    cwnd_sizes = []
+    throughputs = []
     if filename.startswith('log-'):
         print(filename)
         with open(filename, 'r') as f:
@@ -24,7 +24,6 @@ for filename in os.listdir(os.getcwd()):
                 plt.title('Congestion Window Size Over Time')
                 plt.xlabel('Time (s)')
                 plt.ylabel('Congestion Window Size (packets)')
-                # plt.xlim(min(times), min(times) + 0.01)  # Adjust the 0.01 to change the range of x-values displayed
                 plt.savefig('cwnd'+filename[:-4]+'.png')
             except Exception as e:
                 print(e)
