@@ -5,4 +5,4 @@ students/win_x86/.vagrant/machines/default/virtualbox/id
 students/win_x86/.vagrant/machines/default/virtualbox/index_uuid
 students/win_x86/.vagrant/machines/default/virtualbox/private_key
 log-*
-logs\*
+students\logs\*
