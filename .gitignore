@@ -1,0 +1,9 @@
+win_x86/*
+win_x86/.vagrant/machines/default/virtualbox/action_provision
+win_x86/.vagrant/machines/default/virtualbox/action_set_name
+win_x86/.vagrant/machines/default/virtualbox/id
+win_x86/.vagrant/machines/default/virtualbox/index_uuid
+win_x86/.vagrant/machines/default/virtualbox/private_key
+log-*
+logs/*
+graphs/*
