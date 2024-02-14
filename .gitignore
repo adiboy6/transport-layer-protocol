@@ -6,3 +6,4 @@ students/win_x86/.vagrant/machines/default/virtualbox/index_uuid
 students/win_x86/.vagrant/machines/default/virtualbox/private_key
 log-*
 students/logs/*
+students/graphs/*
