@@ -7,11 +7,6 @@ import datetime
 import json
 import time
 import base64
-import logging
-
-log_filename = 'log-'+datetime.datetime.now().strftime("%y%m%d%H%M%S")+'.txt'
-
-logging.basicConfig(filename=log_filename, level=logging.INFO)
 
 MSG_SIZE = 1500
 DATA_SIZE = 1000
@@ -53,8 +48,7 @@ class Sender():
     if self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode("ascii"), self.destination) < len(msg):
       log("[error] unable to fully send packet")
     else:
-      log(f"[send_data] {msg['sequence']} ({len(msg['data'])})")
-      logging.info(f"[send data] {time.time()} {self.cwnd}")
+      log(f"[send data] {msg['sequence']} ({len(msg['data'])})")
       packet_send_time = time.time()
       packet_timeout = packet_send_time + (2 * self.rtt)
       self.packets_sent[msg['sequence']] = {
@@ -153,9 +147,6 @@ class Sender():
         if self.reno_phase == 'fast_recovery':
           self.reno_phase = 'congestion_avoidance'
           self.cwnd = self.ssthresh
-      
-      logging.info(f"[recv ack] {decoded['ack']} {self.cwnd}")
-      
       remove_received_packets(decoded)
       send_new_packets()
 
@@ -169,7 +160,6 @@ class Sender():
       if sent_packet[PRT] == 0:
         new_sample = time.time() - sent_packet[PST]
         self.rtt = .875 * self.rtt + (1.0 - .875) * new_sample
-        logging.info(f"[update rtt] {decoded['sack']} rtt={self.rtt}")
 
     def remove_received_packets(decoded):
       """Remove packets that have been received by the receiver."""
